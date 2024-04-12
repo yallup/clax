@@ -12,6 +12,8 @@ from clax import Classifier
 from scipy.stats import multivariate_normal
 import numpy as np
 
+np.random.seed(2024)
+
 dim = 5
 n_sample = 100000
 
@@ -26,8 +28,19 @@ labels = np.concatenate((np.zeros(n_sample), np.ones(n_sample)))
 
 D_test = M_1.rvs()
 
+# Arg is the number classes
 classifier = Classifier(2)
 classifier.fit(data, labels, epochs=20)
+
+# Default predict the logprobs of the data
+pred = classifier.predict(D_test)
+
+# use to predict the ratios
+print(pred[0] - pred[1])
+print(M_0.logpdf(D_test) - M_1.logpdf(D_test))
+
+# or predict the probs
+print(classifier.predict(D_test, log=False))
 ```
 
 # More advanced choices
