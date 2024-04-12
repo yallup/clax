@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "clax"
 version = "0.0.1"
-description = "Diffusion meets sampling"
+description = "Prebuilt jax classifiers"
 authors = ["David Yallup <david.yallup@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-flax = "^0.7.2"
+flax = "^0.8.2"
 tqdm = "^4.62.0"
 optax = "^0.2.2"
 
