@@ -40,7 +40,7 @@ class Classifier(object):
         self.state = None
 
     def loss(self, params, batch, labels):
-        """Loss function for training the calibrator."""
+        """Loss function for training the classifier."""
         output = self.state.apply_fn({"params": params}, batch)
         loss = optax.softmax_cross_entropy_with_integer_labels(
             output.squeeze(), labels
@@ -159,7 +159,7 @@ class Regressor(Classifier):
     """Regressor class wrapping a basic jax multiclass regressor."""
 
     def loss(self, params, batch, labels):
-        """Loss function for training the calibrator."""
+        """Loss function for training the regressor."""
         output = self.state.apply_fn({"params": params}, batch)
         loss = optax.squared_error(output.squeeze(), labels).mean()
         return loss
