@@ -43,6 +43,24 @@ print(M_0.logpdf(D_test) - M_1.logpdf(D_test))
 print(classifier.predict(D_test, log=False))
 ```
 
+## Extension to regression
+```python
+from clax import Regressor
+import matplotlib.pyplot as plt
+
+regressor = Regressor(1)
+D = M_0.rvs(n_sample)
+target = M_0.logpdf(D)
+regressor.fit(D, target, epochs=20)
+
+D_test = M_0.rvs(1000)
+target_test = M_0.logpdf(D_test).reshape(-1,1)
+
+pred = regressor.predict(D_test).reshape(-1,1)
+plt.plot(pred, target_test, "o")
+plt.show()
+```
+
 # More advanced choices
 
 ```python

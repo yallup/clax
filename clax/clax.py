@@ -7,8 +7,9 @@ import jax.random as random
 import optax
 from flax import linen as nn
 from jax import jit, tree_map
-from tqdm import tqdm
 from optax import tree_utils as otu
+from tqdm import tqdm
+
 from clax.network import DataLoader, Network, TrainState
 
 
@@ -60,9 +61,7 @@ class Classifier(object):
 
         @jit
         def update_step(state, samples, labels):
-            val, grads = jax.value_and_grad(self.loss)(
-                state.params, samples, labels
-            )
+            val, grads = jax.value_and_grad(self.loss)(state.params, samples, labels)
             state = state.apply_gradients(grads=grads, value=val)
             return val, state
 
@@ -91,7 +90,7 @@ class Classifier(object):
         """Initialise the training state and setup the optimizer."""
         dummy_x = jnp.zeros((1, self.ndims))
         _params = self.network.init(self.rng, dummy_x)
-        lr = kwargs.get("lr", 1e-3)
+        lr = kwargs.get("lr", 1e-2)
         params = _params["params"]
         transition_steps = kwargs.get("transition_steps", 100)
         optimizer = optax.chain(
@@ -124,7 +123,7 @@ class Classifier(object):
             restart (bool): If True, reinitialise the model before training. Defaults to False.
             batch_size (int): Size of the training batches. Defaults to 1024.
             epochs (int): Number of training epochs. Defaults to 10.
-            lr (float): Learning rate. Defaults to 1e-3.
+            lr (float): Learning rate. Defaults to 1e-2.
             transition_steps (int): Number of steps to transition the learning rate.
                                     Defaults to 100.
         """
@@ -154,3 +153,13 @@ class Classifier(object):
             return self._predict_weight(samples)
         else:
             return nn.softmax(self._predict_weight(samples))
+
+
+class Regressor(Classifier):
+    """Regressor class wrapping a basic jax multiclass regressor."""
+
+    def loss(self, params, batch, labels):
+        """Loss function for training the calibrator."""
+        output = self.state.apply_fn({"params": params}, batch)
+        loss = optax.squared_error(output.squeeze(), labels).mean()
+        return loss
