@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import jax.random as random
 import optax
 from flax import linen as nn
+from flax.training import train_state
 from jax import jit, tree_map
 from optax import tree_utils as otu
 from tqdm import tqdm
@@ -42,12 +43,10 @@ class Classifier(object):
     def loss(self, params, batch, labels):
         """Loss function for training the classifier."""
         output = self.state.apply_fn({"params": params}, batch)
-        loss = optax.softmax_cross_entropy_with_integer_labels(
-            output.squeeze(), labels
-        ).mean()
-        # loss = optax.sigmoid_binary_cross_entropy(
+        # loss = optax.softmax_cross_entropy_with_integer_labels(
         #     output.squeeze(), labels
         # ).mean()
+        loss = optax.sigmoid_binary_cross_entropy(output.squeeze(), labels).mean()
         return loss
 
     def _train(self, samples, labels, batches_per_epoch, **kwargs):
@@ -62,7 +61,7 @@ class Classifier(object):
         @jit
         def update_step(state, samples, labels):
             val, grads = jax.value_and_grad(self.loss)(state.params, samples, labels)
-            state = state.apply_gradients(grads=grads, value=val)
+            state = state.apply_gradients(grads=grads)  # , scale_value=val)
             return val, state
 
         train_size = samples.shape[0]
@@ -92,21 +91,24 @@ class Classifier(object):
         _params = self.network.init(self.rng, dummy_x)
         lr = kwargs.get("lr", 1e-2)
         params = _params["params"]
-        transition_steps = kwargs.get("transition_steps", 100)
+        transition_steps = kwargs.get("transition_steps", 1000)
+        self.schedule = optax.warmup_cosine_decay_schedule(
+            init_value=0.0,
+            peak_value=lr,
+            warmup_steps=transition_steps,
+            decay_steps=transition_steps * 10,
+            end_value=lr * 1e-4,
+            exponent=1.0,
+        )
         optimizer = optax.chain(
-            optax.clip_by_global_norm(1.0),
-            optax.adamw(
-                optax.cosine_decay_schedule(lr * 5, transition_steps, alpha=lr)
-            ),
-            optax.contrib.reduce_on_plateau(
-                factor=0.5,
-                patience=transition_steps // 10,  # 10
-                # cooldown=transition_steps // 10,  # 10
-                accumulation_size=transition_steps,
-            ),
+            # optax.clip_by_global_norm(1.0),
+            optax.adaptive_grad_clip(0.01),
+            # optax.adam(lr),
+            optax.adamw(self.schedule),
         )
 
-        self.state = TrainState.create(
+        self.state = train_state.TrainState.create(
+            # self.state = TrainState.create(
             apply_fn=self.network.apply,
             params=params,
             tx=optimizer,

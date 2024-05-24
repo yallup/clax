@@ -19,7 +19,7 @@ class DataLoader(object):
 
 class TrainState(train_state.TrainState):
     # batch_stats: Any
-    value: float = 1.0
+    scale_value: float = 1.0
 
     def apply_gradients(self, *, grads, **kwargs):
         """Updates `step`, `params`, `opt_state` and `**kwargs` in return value.
@@ -36,7 +36,7 @@ class TrainState(train_state.TrainState):
         and `opt_state` updated by applying `grads`, and additional attributes
         replaced as specified by `kwargs`.
         """
-        val = kwargs.get("val", 1.0)
+        scale_value = kwargs.get("scale_value", 1.0)
         if OVERWRITE_WITH_GRADIENT in grads:
             grads_with_opt = grads["params"]
             params_with_opt = self.params["params"]
@@ -45,7 +45,7 @@ class TrainState(train_state.TrainState):
             params_with_opt = self.params
 
         updates, new_opt_state = self.tx.update(
-            grads_with_opt, self.opt_state, params_with_opt, value=val
+            grads_with_opt, self.opt_state, params_with_opt, value=scale_value
         )
         new_params_with_opt = optax.apply_updates(params_with_opt, updates)
 
@@ -86,7 +86,7 @@ class TrainState(train_state.TrainState):
 class Network(nn.Module):
     """A simple MLP classifier."""
 
-    n_initial: int = 128
+    n_initial: int = 256
     n_hidden: int = 64
     n_layers: int = 3
     n_out: int = 1
@@ -99,5 +99,34 @@ class Network(nn.Module):
         for i in range(self.n_layers):
             x = nn.Dense(self.n_hidden)(x)
             x = nn.silu(x)
+        x = nn.Dense(self.n_out)(x)
+        return x
+
+
+class TransformerNetwork(nn.Module):
+    """A multihead attention transformer network."""
+
+    n_heads: int = 4
+    n_hidden: int = 64
+    n_out: int = 1
+
+    @nn.compact
+    def __call__(self, x):
+        # positional encoding
+        n, d = x.shape
+        pos = np.arange(d)
+        pos = pos / np.power(10000, 2 * (pos // 2) / d)
+        pos = pos[None, :]
+        pos = np.stack([np.sin(pos), np.cos(pos)], axis=-1)
+        x = x + pos
+        # x = nn.Dense(self.n_hidden)(x)
+        # x = nn.silu(x)
+        x = nn.MultiHeadDotProductAttention(
+            num_heads=self.n_heads, qkv_features=self.n_hidden
+        )(x)
+        x = nn.LayerNorm()(x)
+        x = nn.silu(x)
+        x = nn.Dense(self.n_hidden)(x)
+        x = nn.silu(x)
         x = nn.Dense(self.n_out)(x)
         return x
