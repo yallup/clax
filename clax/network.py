@@ -121,11 +121,11 @@ class ConditionalNetwork(nn.Module):
 
     @nn.compact
     def __call__(self, x, y):
-        x = nn.concatenate([x, y])
+        x = nn.concatenate([x, y], axis=-1)
         x = nn.Dense(self.n_initial)(x)
         x = nn.silu(x)
         for i in range(self.n_layers):
-            x = jnp.concatenate([x, y])
+            # x = jnp.concatenate([x, y])
             x = nn.Dense(self.n_hidden)(x)
             x = nn.silu(x)
         x = nn.Dense(self.n_out)(x)

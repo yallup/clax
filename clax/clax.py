@@ -40,7 +40,7 @@ class Classifier(object):
         self.network = Network(n_out=n)
         self.state = None
 
-    def loss(self, params, batch_stats, batch, labels):
+    def loss(self, params, batch_stats, batch, labels, rng):
         """Loss function for training the classifier."""
         output, updates = self.state.apply_fn(
             {"params": params, "batch_stats": batch_stats},
@@ -57,16 +57,14 @@ class Classifier(object):
     def _train(self, samples, labels, batches_per_epoch, **kwargs):
         """Internal wrapping of training loop."""
         self.trace = Trace()
-        labels = jnp.array(labels, dtype=int)
-        samples = jnp.array(samples, dtype=jnp.float32)
         batch_size = kwargs.get("batch_size", 1024)
         epochs = kwargs.get("epochs", 10)
         epochs *= batches_per_epoch
 
         @jit
-        def update_step(state, samples, labels):
+        def update_step(state, samples, labels, rng):
             (val, updates), grads = jax.value_and_grad(self.loss, has_aux=True)(
-                state.params, state.batch_stats, samples, labels
+                state.params, state.batch_stats, samples, labels, rng
             )
             state = state.apply_gradients(grads=grads)  # , scale_value=val)
             state = state.replace(batch_stats=updates["batch_stats"])
@@ -80,15 +78,15 @@ class Classifier(object):
         for k in tepochs:
             self.rng, step_rng = random.split(self.rng)
             perm, _ = map.sample(batch_size)
-            batch = samples[perm, :]
+            batch = samples[perm]
             batch_label = labels[perm]
-            loss, self.state = update_step(self.state, batch, batch_label)
+            loss, self.state = update_step(self.state, batch, batch_label, step_rng)
             losses.append(loss)
             # self.state.losses.append(loss)
             if (k + 1) % 50 == 0:
                 ma = jnp.mean(jnp.array(losses[-50:]))
                 self.trace.losses.append(ma)
-                tepochs.set_postfix(loss=ma)
+                tepochs.set_postfix(loss="{:.2e}".format(ma))
                 self.trace.iteration += 1
                 # lr_scale = otu.tree_get(self.state, "scale")
                 # self.trace.lr.append(lr_scale)
@@ -147,6 +145,8 @@ class Classifier(object):
         self.ndims = samples.shape[-1]
         if (not self.state) | restart:
             self._init_state(**kwargs)
+        labels = jnp.array(labels, dtype=int)
+        samples = jnp.array(samples, dtype=jnp.float32)
         self._train(samples, labels, batches_per_epoch, **kwargs)
         self._predict_weight = lambda x: self.state.apply_fn(
             {
@@ -157,23 +157,77 @@ class Classifier(object):
             train=False,
         )
 
-    def predict(self, samples, log=True):
+    def predict(self, samples):
         """Predict the class (log) - probabilities for the provided samples.
 
         Args:
             samples (np.ndarray): Samples to predict on.
             log (bool): If True, return the log-probabilities. Defaults to True.
         """
-        if log:
-            return self._predict_weight(samples)
-        else:
-            return nn.softmax(self._predict_weight(samples))
+        return self._predict_weight(samples)
 
-    def log_score(self, samples):
-        logits = self._predict_weight(samples)
-        log_p = jax.nn.log_sigmoid(logits)
-        log_not_p = jax.nn.log_sigmoid(-logits)
-        return log_p - (1 - log_not_p)
+
+class ConditionalClassifier(Classifier):
+    def loss(self, params, batch_stats, batch, labels, rng):
+        """Loss function for training the classifier."""
+
+        batch = jnp.concatenate([batch, labels], axis=0)
+        labels = jnp.concatenate(
+            [jnp.ones(batch.shape[0] // 2), jnp.zeros(batch.shape[0] // 2)]
+        )
+
+        output, updates = self.state.apply_fn(
+            {"params": params, "batch_stats": batch_stats},
+            batch,
+            train=True,
+            mutable=["batch_stats"],
+        )
+        # loss = optax.softmax_cross_entropy_with_integer_labels(
+        #     output.squeeze(), labels
+        # ).mean()
+        loss = optax.sigmoid_binary_cross_entropy(output.squeeze(), labels).mean()
+        return loss, updates
+
+    def fit(self, samples_a, samples_b, **kwargs):
+        """Fit the classifier on provided samples.
+
+        Args:
+            samples (np.ndarray): Samples to train on.
+            labels (np.array): integer class labels corresponding to each sample.
+
+        Keyword Args:
+            restart (bool): If True, reinitialise the model before training. Defaults to False.
+            batch_size (int): Size of the training batches. Defaults to 1024.
+            epochs (int): Number of training epochs. Defaults to 10.
+            lr (float): Learning rate. Defaults to 1e-2.
+            transition_steps (int): Number of steps to transition the learning rate.
+                                    Defaults to 100.
+        """
+        restart = kwargs.get("restart", False)
+        batch_size = kwargs.get("batch_size", 1024)
+        self.ndims = kwargs.get("ndims", samples_a.shape[-1])
+        data_size = samples_a.shape[0]
+        batches_per_epoch = data_size // batch_size
+        if (not self.state) | restart:
+            self._init_state(**kwargs)
+        self._train(samples_a, samples_b, batches_per_epoch, **kwargs)
+        self._predict_weight = lambda x: self.state.apply_fn(
+            {
+                "params": self.state.params,
+                "batch_stats": self.state.batch_stats,
+            },
+            x,
+            train=False,
+        )
+
+    def predict(self, samples):
+        """Predict the class (log) - probabilities for the provided samples.
+
+        Args:
+            samples (np.ndarray): Samples to predict on.
+            log (bool): If True, return the log-probabilities. Defaults to True.
+        """
+        return self._predict_weight(samples)
 
 
 class Regressor(Classifier):

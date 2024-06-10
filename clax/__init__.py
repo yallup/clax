@@ -1,1 +1,1 @@
-from clax.clax import Classifier, Regressor
+from clax.clax import Classifier, ConditionalClassifier, Regressor
