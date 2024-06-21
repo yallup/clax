@@ -11,7 +11,7 @@ from jax import jit, tree_map
 from optax import tree_utils as otu
 from tqdm import tqdm
 
-from clax.network import DataLoader, Network, TrainState
+from clax.network import DataLoader, Network, ShuffleDataLoader, TrainState
 
 
 @dataclass
@@ -38,6 +38,7 @@ class Classifier(object):
         """
         self.rng = random.PRNGKey(kwargs.get("seed", 2024))
         self.network = Network(n_out=n)
+        self.n = n
         self.state = None
 
     def loss(self, params, batch_stats, batch, labels, rng):
@@ -73,13 +74,17 @@ class Classifier(object):
         train_size = samples.shape[0]
         batch_size = min(batch_size, train_size)
         losses = []
-        map = DataLoader(samples, labels)
+        # map = DataLoader(samples, labels)
+        map = ShuffleDataLoader(samples, labels, k=self.n)
         tepochs = tqdm(range(epochs))
         for k in tepochs:
             self.rng, step_rng = random.split(self.rng)
-            perm, _ = map.sample(batch_size)
-            batch = samples[perm]
-            batch_label = labels[perm]
+            # perm, _ = map.sample(batch_size)
+            perm = map.sample(batch_size)
+            # batch = samples[perm]
+            batch = samples[perm[..., 0]]
+            batch_label = labels[perm[..., 1]]
+            # batch_label = labels[perm]
             loss, self.state = update_step(self.state, batch, batch_label, step_rng)
             losses.append(loss)
             # self.state.losses.append(loss)

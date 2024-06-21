@@ -19,6 +19,65 @@ class DataLoader(object):
         return idx, idx_p
 
 
+class ShuffleDataLoader(object):
+    def __init__(self, x0, x1, rng=0, k=2):
+        self.x0 = np.atleast_2d(x0)
+        self.x1 = np.atleast_2d(x1)
+        self.rng = np.random.default_rng(rng)
+        self.gammas = np.linspace(0, 1, k)
+
+    def shuffle(self, total, batch_size, gamma):
+        # print("shuffle")
+        # perm = self.rng.permutation(batch_size)
+        perm = self.rng.choice(np.arange(total), size=(batch_size), replace=True)
+        mixed, matched = np.split(perm, np.atleast_1d(gamma))
+        remixed = self.rng.permutation(mixed)
+        # x_matched = np.concatenate([theta[matched], batch[matched]], axis=-1)
+        # x_mixed = np.concatenate([theta[remixed], batch[mixed]], axis=-1)
+        theta_idx = np.concatenate([matched, remixed], axis=0)
+        batch_idx = np.concatenate([matched, mixed], axis=0)
+        return theta_idx, batch_idx
+
+    def shuffle_perm(self, perm, gamma):
+        # perm = self.rng.permutation(perm)
+        mixed, matched = np.split(perm, np.atleast_1d(gamma))
+        remixed = self.rng.permutation(mixed)
+        theta_idx = np.concatenate([matched, remixed], axis=0)
+        batch_idx = np.concatenate([matched, mixed], axis=0)
+
+        return theta_idx, batch_idx
+
+    def shuffle_perm_noremix(self, perm, mix, gamma):
+        # perm = self.rng.permutation(perm)
+        # mixed, matched = np.split(perm, np.atleast_1d(gamma))
+        matched = perm[gamma:]
+        mixed = perm[:gamma]
+        remixed = mix[:gamma]
+        # remixed = self.rng.permutation(mixed)
+        theta_idx = np.concatenate([matched, remixed], axis=0)
+        batch_idx = np.concatenate([matched, mixed], axis=0)
+
+        return theta_idx, batch_idx
+
+    def sample(self, batch_size=128, *args):
+        idx = []
+        perm = self.rng.choice(
+            np.arange(self.x0.shape[0]), size=(batch_size), replace=True
+        )
+        mix = self.rng.permutation(perm)
+
+        for i, k in enumerate(self.gammas):
+            idx.append(self.shuffle(self.x0.shape[0], batch_size, int(k * batch_size)))
+            # idx.append(self.shuffle_perm(perm, int(k * batch_size)))
+            # idx.append(
+            #     self.shuffle_perm_noremix(perm, mix, int(k * batch_size))
+            # )
+        return np.moveaxis(np.asarray(idx), 1, 2)
+        # idx = self.rng.choice(self.x0.shape[0], size=(batch_size), replace=True)
+        # idx_p = self.rng.choice(self.x1.shape[0], size=(batch_size), replace=True)
+        # return idx, idx_p
+
+
 class TrainState(train_state.TrainState):
     batch_stats: Any
     # scale_value: float = 1.0
