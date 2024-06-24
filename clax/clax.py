@@ -37,6 +37,7 @@ class Classifier(object):
             seed: int: Random seed.
         """
         self.rng = random.PRNGKey(kwargs.get("seed", 2024))
+        self.n = n
         self.network = Network(n_out=n)
         self.state = None
 
