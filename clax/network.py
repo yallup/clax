@@ -24,7 +24,10 @@ class ShuffleDataLoader(object):
         self.x0 = np.atleast_2d(x0)
         self.x1 = np.atleast_2d(x1)
         self.rng = np.random.default_rng(rng)
-        self.gammas = np.linspace(0, 1, k)
+        # self.gammas = np.linspace(0, 1, k)
+        self.gammas = np.asarray([0.3, 0.7])
+        self.fracs = np.arange(k)
+        # self.fracs
 
     def shuffle(self, total, batch_size, gamma):
         # print("shuffle")
@@ -66,8 +69,14 @@ class ShuffleDataLoader(object):
         )
         mix = self.rng.permutation(perm)
 
+        # for i, k in enumerate(self.fracs[::]):
+        #     idx.append(self.shuffle(self.x0.shape[0], batch_size, k))
+        # for i, k in enumerate(self.fracs):
+        #     idx.append(self.shuffle(self.x0.shape[0], batch_size, k))
+
         for i, k in enumerate(self.gammas):
-            idx.append(self.shuffle(self.x0.shape[0], batch_size, int(k * batch_size)))
+            idx.append(self.shuffle_perm(perm, int(k * batch_size)))
+            # idx.append(self.shuffle(self.x0.shape[0], batch_size, int(k * batch_size)))
             # idx.append(self.shuffle_perm(perm, int(k * batch_size)))
             # idx.append(
             #     self.shuffle_perm_noremix(perm, mix, int(k * batch_size))
