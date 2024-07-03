@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "clax"
-version = "0.0.3"
+version = "0.0.5"
 description = "Prebuilt jax classifiers"
 authors = ["David Yallup <david.yallup@gmail.com>"]
 readme = "README.md"

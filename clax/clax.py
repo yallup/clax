@@ -37,9 +37,11 @@ class Classifier(object):
             seed: int: Random seed.
         """
         self.rng = random.PRNGKey(kwargs.get("seed", 2024))
+        self.n = n
         self.network = Network(n_out=n)
         self.n = n
         self.state = None
+        self.dl = DataLoader
 
     def loss(self, params, batch_stats, batch, labels, rng):
         """Loss function for training the classifier."""
@@ -52,7 +54,7 @@ class Classifier(object):
         # loss = optax.softmax_cross_entropy_with_integer_labels(
         #     output.squeeze(), labels
         # ).mean()
-        loss = optax.sigmoid_binary_cross_entropy(output.squeeze(), labels).mean()
+        loss = optax.sigmoid_binary_cross_entropy(output.squeeze(), labels).sum()
         return loss, updates
 
     def _train(self, samples, labels, batches_per_epoch, **kwargs):
@@ -69,27 +71,27 @@ class Classifier(object):
             )
             state = state.apply_gradients(grads=grads)  # , scale_value=val)
             state = state.replace(batch_stats=updates["batch_stats"])
-            return val, state
+            return val, state, grads
 
         train_size = samples.shape[0]
         batch_size = min(batch_size, train_size)
         losses = []
-        # map = DataLoader(samples, labels)
-        map = ShuffleDataLoader(samples, labels, k=self.n)
+        dl = self.dl(samples.shape[0], labels.shape[0], **kwargs)
         tepochs = tqdm(range(epochs))
         for k in tepochs:
             self.rng, step_rng = random.split(self.rng)
-            # perm, _ = map.sample(batch_size)
-            perm = map.sample(batch_size)
-            # batch = samples[perm]
-            batch = samples[perm[..., 0]]
-            batch_label = labels[perm[..., 1]]
-            # batch_label = labels[perm]
-            loss, self.state = update_step(self.state, batch, batch_label, step_rng)
+            perm, perm_label = dl.sample(batch_size)
+            batch = samples[perm]
+            batch_label = labels[perm_label]
+            loss, self.state, grads = update_step(
+                self.state, batch, batch_label, step_rng
+            )
             losses.append(loss)
+            # print(jax.tree_util.tree_flatten(grads)[0][-1].sum())
+
             # self.state.losses.append(loss)
             if (k + 1) % 50 == 0:
-                ma = jnp.mean(jnp.array(losses[-50:]))
+                ma = jnp.mean(jnp.array(losses[-500:]))
                 self.trace.losses.append(ma)
                 tepochs.set_postfix(loss="{:.2e}".format(ma))
                 self.trace.iteration += 1

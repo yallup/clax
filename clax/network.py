@@ -8,15 +8,15 @@ from flax.training import train_state
 
 
 class DataLoader(object):
-    def __init__(self, x0, x1, rng=0):
-        self.x0 = np.atleast_2d(x0)
-        self.x1 = np.atleast_2d(x1)
+    def __init__(self, x0, x1, rng=0, **kwargs):
+        self.x0 = x0
+        self.x1 = x1
         self.rng = np.random.default_rng(rng)
 
     def sample(self, batch_size=128, *args):
-        idx = self.rng.choice(self.x0.shape[0], size=(batch_size), replace=True)
-        idx_p = self.rng.choice(self.x1.shape[0], size=(batch_size), replace=True)
-        return idx, idx_p
+        idx = self.rng.choice(self.x0, size=(batch_size), replace=True)
+        # idx_p = self.rng.choice(self.x1.shape[0], size=(batch_size), replace=True)
+        return idx, idx
 
 
 class ShuffleDataLoader(object):
@@ -165,6 +165,7 @@ class Network(nn.Module):
     @nn.compact
     def __call__(self, x, train: bool):
         x = nn.Dense(self.n_initial)(x)
+        # nn.BatchNorm(use_running_average=not train)(x)
         x = nn.BatchNorm(use_running_average=not train)(x)
         x = nn.silu(x)
         for i in range(self.n_layers):
