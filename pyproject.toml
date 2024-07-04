@@ -13,6 +13,8 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.9"
 dependencies = [
+    "jax == 0.4.26",
+    "jaxlib == 0.4.26",
     "flax >= 0.8.2",
     "tqdm >= 4.62.0",
     "optax >= 0.2.2",
@@ -23,9 +25,13 @@ test = [
     "pytest >= 7.3",
     "pytest-cov >= 4.0",
 ]
+metal = [
+    "jax-metal >= 0.1.0",
+]
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov", "flake8", "pydocstyle", "packaging", "pre-commit"]
+metal = ["jax-metal"]
 
 [tool.setuptools.dynamic]
 version = {attr = "clax._version.__version__"}

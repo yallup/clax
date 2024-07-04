@@ -106,8 +106,8 @@ class Classifier(object):
             exponent=1.0,
         )
         optimizer = optax.chain(
-            # optax.clip_by_global_norm(1.0),
-            optax.adaptive_grad_clip(0.01),
+            optax.clip_by_global_norm(1.0),
+            # optax.adaptive_grad_clip(0.01),
             # optax.adam(lr),
             # optax.adamw(self.schedule),
             optax.adamw(lr),
@@ -183,7 +183,7 @@ class ConditionalClassifier(Classifier):
         # loss = optax.softmax_cross_entropy_with_integer_labels(
         #     output.squeeze(), labels
         # ).mean()
-        loss = optax.sigmoid_binary_cross_entropy(output.squeeze(), labels).mean()
+        loss = self.loss_fn(output.squeeze(), labels).mean()
         return loss, updates
 
     def fit(self, samples_a, samples_b, **kwargs):
