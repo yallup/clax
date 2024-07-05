@@ -6,7 +6,7 @@ handy classifiers in jax
 
 `pip install .`
 
-For Apple silicon users with Sonoma 14.4+ wanting to try GPU acceleration
+For Apple silicon users with Sonoma 14.4+ wanting to try GPU acceleration (may need `ENABLE_PJRT_COMPATIBILITY=1`)
 
 `pip install ".[metal]"`
 
