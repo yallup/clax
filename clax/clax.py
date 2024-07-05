@@ -38,7 +38,9 @@ class Classifier(object):
         self.rng = random.PRNGKey(kwargs.get("seed", 2024))
         self.n = n
         self.network = Network(n_out=n)
+        self.n = n
         self.state = None
+        self.dl = DataLoader
         if n == 1:
             self.loss_fn = optax.sigmoid_binary_cross_entropy
         else:
@@ -60,7 +62,7 @@ class Classifier(object):
         self.trace = Trace()
         batch_size = kwargs.get("batch_size", 1024)
         epochs = kwargs.get("epochs", 10)
-        epochs *= batches_per_epoch
+        # epochs *= batches_per_epoch
 
         @jit
         def update_step(state, samples, labels, rng):
@@ -74,23 +76,25 @@ class Classifier(object):
         train_size = samples.shape[0]
         batch_size = min(batch_size, train_size)
         losses = []
-        map = DataLoader(samples, labels)
+
+        dl = self.dl(samples.shape[0], labels.shape[0], **kwargs)
         tepochs = tqdm(range(epochs))
         for k in tepochs:
-            self.rng, step_rng = random.split(self.rng)
-            perm, _ = map.sample(batch_size)
-            batch = samples[perm]
-            batch_label = labels[perm]
-            loss, self.state = update_step(self.state, batch, batch_label, step_rng)
-            losses.append(loss)
-            # self.state.losses.append(loss)
-            if (k + 1) % 50 == 0:
-                ma = jnp.mean(jnp.array(losses[-50:]))
-                self.trace.losses.append(ma)
-                tepochs.set_postfix(loss="{:.2e}".format(ma))
-                self.trace.iteration += 1
-                # lr_scale = otu.tree_get(self.state, "scale")
-                # self.trace.lr.append(lr_scale)
+            epoch_losses = []
+            for _ in range(batches_per_epoch):
+                self.rng, step_rng = random.split(self.rng)
+                perm, perm_label = dl.sample(batch_size)
+                batch = samples[perm]
+                batch_label = labels[perm_label]
+                loss, self.state = update_step(self.state, batch, batch_label, step_rng)
+                epoch_losses.append(loss)
+
+            epoch_summary_loss = jnp.mean(jnp.asarray(epoch_losses))
+            tepochs.set_postfix(loss="{:.2e}".format(epoch_summary_loss))
+            losses.append(epoch_summary_loss)
+            # if losses[::-1][:patience] < epoch_summary_loss:
+            #     break
+        self.trace.losses = jnp.asarray(losses)
 
     def _init_state(self, **kwargs):
         """Initialise the training state and setup the optimizer."""

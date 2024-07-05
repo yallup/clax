@@ -49,11 +49,11 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.01)
 classifier = Classifier()
 
 chain = optax.chain(
-    optax.adaptive_grad_clip(10.0),
-    optax.adamw(1e-5),
+    optax.adaptive_grad_clip(1.0),
+    optax.adamw(1e-3),
 )
 
-classifier.fit(X_train, y_train, epochs=2000, optimizer=chain, batch_size=10000)
+classifier.fit(X_train, y_train, epochs=500, optimizer=chain, batch_size=1000)
 
 true_k = M_1.logpdf(X_test) - M_0.logpdf(X_test)
 network_k = classifier.predict(X_test).squeeze()
