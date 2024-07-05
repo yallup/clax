@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from jax import nn
 
-from clax import Classifier, ConditionalClassifier
+from clax import Classifier, ClassifierSamples
 
 # @pytest.mark.parametrize("n_classes", [2, 10])
 # class TestClassifier:
@@ -28,7 +28,7 @@ def test_classifier(n_classes):
 
 
 def test_conditional_classifier():
-    classifier = ConditionalClassifier()
+    classifier = ClassifierSamples()
     data_x = np.random.rand(100, 10)
     data_y = np.random.rand(100, 10)
     classifier.fit(data_x, data_y)

@@ -18,7 +18,7 @@ from clax import Classifier
 
 np.random.seed(2025)
 dim = 100
-n_sample = 500000
+n_sample = 100000
 
 
 c1 = np.random.rand(dim) - 0.5
@@ -45,11 +45,11 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.01)
 
 
 # # Arg is the number classes
-classifier = Classifier()
+classifier = Classifier(n=2)
 
 lr = 1e-4
 # classifier.network = Network(n_out=1, n_initial=1056, n_hidden=128, n_layers=3)
-classifier.fit(X_train, y_train, epochs=300, lr=lr, batch_size=2000)
+classifier.fit(X_train, y_train, epochs=300, lr=lr, batch_size=10000)
 
 true_k = M_1.logpdf(X_test) - M_0.logpdf(X_test)
 network_k = classifier.predict(X_test).squeeze()

@@ -106,7 +106,7 @@ class Classifier(object):
             exponent=1.0,
         )
         optimizer = optax.chain(
-            optax.clip_by_global_norm(1.0),
+            # optax.clip_by_global_norm(1.0),
             # optax.adaptive_grad_clip(0.01),
             # optax.adam(lr),
             # optax.adamw(self.schedule),
@@ -165,7 +165,7 @@ class Classifier(object):
         return self._predict_weight(samples)
 
 
-class ConditionalClassifier(Classifier):
+class ClassifierSamples(Classifier):
     def loss(self, params, batch_stats, batch, labels, rng):
         """Loss function for training the classifier."""
 
