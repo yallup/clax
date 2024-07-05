@@ -1,17 +1,13 @@
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 import jax
 import jax.numpy as jnp
 import jax.random as random
 import optax
-from flax import linen as nn
-from flax.training import train_state
-from jax import jit, tree_map
-from optax import tree_utils as otu
+from jax import jit
 from tqdm import tqdm
 
-from clax.network import DataLoader, Network, ShuffleDataLoader, TrainState
+from clax.network import DataLoader, Network, TrainState
 
 
 @dataclass
@@ -26,7 +22,10 @@ class Trace:
 
 
 class Classifier(object):
-    """Classifier class wrapping a basic jax multiclass classifier."""
+    """Classifier class wrapping a basic jax multiclass classifier.
+
+    Takes labels and samples and trains a classifier to predict the labels.
+    """
 
     def __init__(self, n=1, **kwargs):
         """Initialise the Classifier.
@@ -42,6 +41,10 @@ class Classifier(object):
         self.n = n
         self.state = None
         self.dl = DataLoader
+        if n == 1:
+            self.loss_fn = optax.sigmoid_binary_cross_entropy
+        else:
+            self.loss_fn = optax.softmax_cross_entropy_with_integer_labels
 
     def loss(self, params, batch_stats, batch, labels, rng):
         """Loss function for training the classifier."""
@@ -51,10 +54,7 @@ class Classifier(object):
             train=True,
             mutable=["batch_stats"],
         )
-        # loss = optax.softmax_cross_entropy_with_integer_labels(
-        #     output.squeeze(), labels
-        # ).mean()
-        loss = optax.sigmoid_binary_cross_entropy(output.squeeze(), labels).sum()
+        loss = self.loss_fn(output.squeeze(), labels).mean()
         return loss, updates
 
     def _train(self, samples, labels, batches_per_epoch, **kwargs):
@@ -62,7 +62,7 @@ class Classifier(object):
         self.trace = Trace()
         batch_size = kwargs.get("batch_size", 1024)
         epochs = kwargs.get("epochs", 10)
-        epochs *= batches_per_epoch
+        # epochs *= batches_per_epoch
 
         @jit
         def update_step(state, samples, labels, rng):
@@ -71,38 +71,37 @@ class Classifier(object):
             )
             state = state.apply_gradients(grads=grads)  # , scale_value=val)
             state = state.replace(batch_stats=updates["batch_stats"])
-            return val, state, grads
+            return val, state
 
         train_size = samples.shape[0]
         batch_size = min(batch_size, train_size)
         losses = []
+
         dl = self.dl(samples.shape[0], labels.shape[0], **kwargs)
         tepochs = tqdm(range(epochs))
         for k in tepochs:
-            self.rng, step_rng = random.split(self.rng)
-            perm, perm_label = dl.sample(batch_size)
-            batch = samples[perm]
-            batch_label = labels[perm_label]
-            loss, self.state, grads = update_step(
-                self.state, batch, batch_label, step_rng
-            )
-            losses.append(loss)
-            # print(jax.tree_util.tree_flatten(grads)[0][-1].sum())
+            epoch_losses = []
+            for _ in range(batches_per_epoch):
+                self.rng, step_rng = random.split(self.rng)
+                perm, perm_label = dl.sample(batch_size)
+                batch = samples[perm]
+                batch_label = labels[perm_label]
+                loss, self.state = update_step(self.state, batch, batch_label, step_rng)
+                epoch_losses.append(loss)
 
-            # self.state.losses.append(loss)
-            if (k + 1) % 50 == 0:
-                ma = jnp.mean(jnp.array(losses[-500:]))
-                self.trace.losses.append(ma)
-                tepochs.set_postfix(loss="{:.2e}".format(ma))
-                self.trace.iteration += 1
-                # lr_scale = otu.tree_get(self.state, "scale")
-                # self.trace.lr.append(lr_scale)
+            epoch_summary_loss = jnp.mean(jnp.asarray(epoch_losses))
+            tepochs.set_postfix(loss="{:.2e}".format(epoch_summary_loss))
+            losses.append(epoch_summary_loss)
+            # if losses[::-1][:patience] < epoch_summary_loss:
+            #     break
+        self.trace.losses = jnp.asarray(losses)
 
     def _init_state(self, **kwargs):
         """Initialise the training state and setup the optimizer."""
         dummy_x = jnp.zeros((1, self.ndims))
         _params = self.network.init(self.rng, dummy_x, train=False)
         lr = kwargs.get("lr", 1e-2)
+        optimizer = kwargs.get("optimizer", None)
         params = _params["params"]
         batch_stats = _params["batch_stats"]
         transition_steps = kwargs.get("transition_steps", 1000)
@@ -114,13 +113,15 @@ class Classifier(object):
             end_value=lr * 1e-4,
             exponent=1.0,
         )
-        optimizer = optax.chain(
-            # optax.clip_by_global_norm(1.0),
-            optax.adaptive_grad_clip(0.01),
-            # optax.adam(lr),
-            # optax.adamw(self.schedule),
-            optax.adamw(lr),
-        )
+        if not optimizer:
+            optimizer = optax.chain(
+                # optax.clip_by_global_norm(1.0),
+                # optax.adaptive_grad_clip(0.1),
+                optax.adaptive_grad_clip(1.0),
+                # optax.adam(lr),
+                # optax.adamw(self.schedule),
+                optax.adamw(lr),
+            )
 
         # self.state = train_state.TrainState.create(
         self.state = TrainState.create(
@@ -174,7 +175,11 @@ class Classifier(object):
         return self._predict_weight(samples)
 
 
-class ConditionalClassifier(Classifier):
+class ClassifierSamples(Classifier):
+    """Extension of basic Classifier to allow initialization of a binary classifier,
+    with labels implicit from two piles of data.
+    """
+
     def loss(self, params, batch_stats, batch, labels, rng):
         """Loss function for training the classifier."""
 
@@ -192,7 +197,7 @@ class ConditionalClassifier(Classifier):
         # loss = optax.softmax_cross_entropy_with_integer_labels(
         #     output.squeeze(), labels
         # ).mean()
-        loss = optax.sigmoid_binary_cross_entropy(output.squeeze(), labels).mean()
+        loss = self.loss_fn(output.squeeze(), labels).mean()
         return loss, updates
 
     def fit(self, samples_a, samples_b, **kwargs):

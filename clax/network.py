@@ -1,9 +1,7 @@
 from typing import Any
 
 import numpy as np
-import optax
 from flax import linen as nn
-from flax.linen.fp8_ops import OVERWRITE_WITH_GRADIENT
 from flax.training import train_state
 
 
@@ -19,138 +17,8 @@ class DataLoader(object):
         return idx, idx
 
 
-class ShuffleDataLoader(object):
-    def __init__(self, x0, x1, rng=0, k=2):
-        self.x0 = np.atleast_2d(x0)
-        self.x1 = np.atleast_2d(x1)
-        self.rng = np.random.default_rng(rng)
-        # self.gammas = np.linspace(0, 1, k)
-        self.gammas = np.asarray([0.3, 0.7])
-        self.fracs = np.arange(k)
-        # self.fracs
-
-    def shuffle(self, total, batch_size, gamma):
-        # print("shuffle")
-        # perm = self.rng.permutation(batch_size)
-        perm = self.rng.choice(np.arange(total), size=(batch_size), replace=True)
-        mixed, matched = np.split(perm, np.atleast_1d(gamma))
-        remixed = self.rng.permutation(mixed)
-        # x_matched = np.concatenate([theta[matched], batch[matched]], axis=-1)
-        # x_mixed = np.concatenate([theta[remixed], batch[mixed]], axis=-1)
-        theta_idx = np.concatenate([matched, remixed], axis=0)
-        batch_idx = np.concatenate([matched, mixed], axis=0)
-        return theta_idx, batch_idx
-
-    def shuffle_perm(self, perm, gamma):
-        # perm = self.rng.permutation(perm)
-        mixed, matched = np.split(perm, np.atleast_1d(gamma))
-        remixed = self.rng.permutation(mixed)
-        theta_idx = np.concatenate([matched, remixed], axis=0)
-        batch_idx = np.concatenate([matched, mixed], axis=0)
-
-        return theta_idx, batch_idx
-
-    def shuffle_perm_noremix(self, perm, mix, gamma):
-        # perm = self.rng.permutation(perm)
-        # mixed, matched = np.split(perm, np.atleast_1d(gamma))
-        matched = perm[gamma:]
-        mixed = perm[:gamma]
-        remixed = mix[:gamma]
-        # remixed = self.rng.permutation(mixed)
-        theta_idx = np.concatenate([matched, remixed], axis=0)
-        batch_idx = np.concatenate([matched, mixed], axis=0)
-
-        return theta_idx, batch_idx
-
-    def sample(self, batch_size=128, *args):
-        idx = []
-        perm = self.rng.choice(
-            np.arange(self.x0.shape[0]), size=(batch_size), replace=True
-        )
-        mix = self.rng.permutation(perm)
-
-        # for i, k in enumerate(self.fracs[::]):
-        #     idx.append(self.shuffle(self.x0.shape[0], batch_size, k))
-        # for i, k in enumerate(self.fracs):
-        #     idx.append(self.shuffle(self.x0.shape[0], batch_size, k))
-
-        for i, k in enumerate(self.gammas):
-            idx.append(self.shuffle_perm(perm, int(k * batch_size)))
-            # idx.append(self.shuffle(self.x0.shape[0], batch_size, int(k * batch_size)))
-            # idx.append(self.shuffle_perm(perm, int(k * batch_size)))
-            # idx.append(
-            #     self.shuffle_perm_noremix(perm, mix, int(k * batch_size))
-            # )
-        return np.moveaxis(np.asarray(idx), 1, 2)
-        # idx = self.rng.choice(self.x0.shape[0], size=(batch_size), replace=True)
-        # idx_p = self.rng.choice(self.x1.shape[0], size=(batch_size), replace=True)
-        # return idx, idx_p
-
-
 class TrainState(train_state.TrainState):
     batch_stats: Any
-    # scale_value: float = 1.0
-
-    # def apply_gradients(self, *, grads, **kwargs):
-    #     """Updates `step`, `params`, `opt_state` and `**kwargs` in return value.
-
-    #     Note that internally this function calls `.tx.update()` followed by a call
-    #     to `optax.apply_updates()` to update `params` and `opt_state`.
-
-    #     Args:
-    #     grads: Gradients that have the same pytree structure as `.params`.
-    #     **kwargs: Additional dataclass attributes that should be `.replace()`-ed.
-
-    #     Returns:
-    #     An updated instance of `self` with `step` incremented by one, `params`
-    #     and `opt_state` updated by applying `grads`, and additional attributes
-    #     replaced as specified by `kwargs`.
-    #     """
-    #     scale_value = kwargs.get("scale_value", 1.0)
-    #     if OVERWRITE_WITH_GRADIENT in grads:
-    #         grads_with_opt = grads["params"]
-    #         params_with_opt = self.params["params"]
-    #     else:
-    #         grads_with_opt = grads
-    #         params_with_opt = self.params
-
-    #     updates, new_opt_state = self.tx.update(
-    #         grads_with_opt, self.opt_state, params_with_opt, value=scale_value
-    #     )
-    #     new_params_with_opt = optax.apply_updates(params_with_opt, updates)
-
-    #     # As implied by the OWG name, the gradients are used directly to update the
-    #     # parameters.
-    #     if OVERWRITE_WITH_GRADIENT in grads:
-    #         new_params = {
-    #             "params": new_params_with_opt,
-    #             OVERWRITE_WITH_GRADIENT: grads[OVERWRITE_WITH_GRADIENT],
-    #         }
-    #     else:
-    #         new_params = new_params_with_opt
-    #     return self.replace(
-    #         step=self.step + 1,
-    #         params=new_params,
-    #         opt_state=new_opt_state,
-    #         **kwargs,
-    #     )
-
-    # @classmethod
-    # def create(cls, *, apply_fn, params, tx, **kwargs):
-    #     """Creates a new instance with `step=0` and initialized `opt_state`."""
-    #     # We exclude OWG params when present because they do not need opt states.
-    #     params_with_opt = (
-    #         params["params"] if OVERWRITE_WITH_GRADIENT in params else params
-    #     )
-    #     opt_state = tx.init(params_with_opt)
-    #     return cls(
-    #         step=0,
-    #         apply_fn=apply_fn,
-    #         params=params,
-    #         tx=tx,
-    #         opt_state=opt_state,
-    #         **kwargs,
-    #     )
 
 
 class Network(nn.Module):
@@ -174,9 +42,6 @@ class Network(nn.Module):
             x = nn.silu(x)
         x = nn.Dense(self.n_out)(x)
         return x
-
-
-from jax import numpy as jnp
 
 
 class ConditionalNetwork(nn.Module):

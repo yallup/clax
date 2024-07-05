@@ -1,39 +1,45 @@
-[tool.poetry]
-name = "clax"
-version = "0.0.5"
-description = "Prebuilt jax classifiers"
-authors = ["David Yallup <david.yallup@gmail.com>"]
-readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.9"
-flax = "^0.8.2"
-tqdm = "^4.62.0"
-optax = "^0.2.2"
-
-
-# Testing related dependencies - optional
-[tool.poetry.group.test.dependencies]
-pytest = "^7.3"
-pytest-cov = "^4.0"
-[tool.poetry.group.test]
-optional = true
-
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
 
-[tool.black]
-line-length = 88
+[project]
+name = "clax"
+dynamic = ["version"]
+authors = [
+    { name="David Yallup", email="david.yallup@gmail.com" },
+]
+description = "Prebuilt jax classifiers"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.9"
+dependencies = [
+    "jax == 0.4.26",
+    "jaxlib == 0.4.26",
+    "flax >= 0.8.2",
+    "tqdm >= 4.62.0",
+    "optax >= 0.2.2",
+]
+
+[options.extras_require]
+test = [
+    "pytest >= 7.3",
+    "pytest-cov >= 4.0",
+]
+metal = [
+    "jax-metal >= 0.1.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-cov", "flake8", "pydocstyle", "packaging", "pre-commit"]
+metal = ["jax-metal"]
+
+[tool.setuptools.dynamic]
+version = {attr = "clax._version.__version__"}
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ['E203', 'W503', "F401"]
 
 [tool.isort]
-profile = "black"
-multi_line_output = 3
-
-# flake8 - basic linter
-[tool.flake8]
-count = true
-# compatibility with black
-max-line-length = 88
-ignore = ['E203', 'W503']
-exclude = ['examples']
+profile = 'black'
+skip_gitignore = true
