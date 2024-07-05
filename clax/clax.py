@@ -22,7 +22,10 @@ class Trace:
 
 
 class Classifier(object):
-    """Classifier class wrapping a basic jax multiclass classifier."""
+    """Classifier class wrapping a basic jax multiclass classifier.
+
+    Takes labels and samples and trains a classifier to predict the labels.
+    """
 
     def __init__(self, n=1, **kwargs):
         """Initialise the Classifier.
@@ -94,6 +97,7 @@ class Classifier(object):
         dummy_x = jnp.zeros((1, self.ndims))
         _params = self.network.init(self.rng, dummy_x, train=False)
         lr = kwargs.get("lr", 1e-2)
+        optimizer = kwargs.get("optimizer", None)
         params = _params["params"]
         batch_stats = _params["batch_stats"]
         transition_steps = kwargs.get("transition_steps", 1000)
@@ -105,13 +109,15 @@ class Classifier(object):
             end_value=lr * 1e-4,
             exponent=1.0,
         )
-        optimizer = optax.chain(
-            # optax.clip_by_global_norm(1.0),
-            # optax.adaptive_grad_clip(0.01),
-            # optax.adam(lr),
-            # optax.adamw(self.schedule),
-            optax.adamw(lr),
-        )
+        if not optimizer:
+            optimizer = optax.chain(
+                # optax.clip_by_global_norm(1.0),
+                # optax.adaptive_grad_clip(0.1),
+                optax.adaptive_grad_clip(1.0),
+                # optax.adam(lr),
+                # optax.adamw(self.schedule),
+                optax.adamw(lr),
+            )
 
         # self.state = train_state.TrainState.create(
         self.state = TrainState.create(
@@ -166,6 +172,10 @@ class Classifier(object):
 
 
 class ClassifierSamples(Classifier):
+    """Extension of basic Classifier to allow initialization of a binary classifier,
+    with labels implicit from two piles of data.
+    """
+
     def loss(self, params, batch_stats, batch, labels, rng):
         """Loss function for training the classifier."""
 

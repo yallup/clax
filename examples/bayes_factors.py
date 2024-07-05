@@ -7,6 +7,7 @@ Demonstrate the importance of going slow when training a classifier
 
 import matplotlib.pyplot as plt
 import numpy as np
+import optax
 from mpl_toolkits.axes_grid1.inset_locator import mark_inset, zoomed_inset_axes
 from scipy.stats import multivariate_normal
 from sklearn.datasets import make_sparse_spd_matrix
@@ -45,11 +46,14 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.01)
 
 
 # # Arg is the number classes
-classifier = Classifier(n=2)
+classifier = Classifier()
 
-lr = 1e-4
-# classifier.network = Network(n_out=1, n_initial=1056, n_hidden=128, n_layers=3)
-classifier.fit(X_train, y_train, epochs=300, lr=lr, batch_size=10000)
+chain = optax.chain(
+    optax.adaptive_grad_clip(10.0),
+    optax.adamw(1e-5),
+)
+
+classifier.fit(X_train, y_train, epochs=2000, optimizer=chain, batch_size=10000)
 
 true_k = M_1.logpdf(X_test) - M_0.logpdf(X_test)
 network_k = classifier.predict(X_test).squeeze()
@@ -175,5 +179,5 @@ plot()
 
 f, a = plt.subplots()
 a.plot(classifier.trace.losses)
-a.loglog()
+a.set_yscale("log")
 f.savefig("losses_metal.pdf")
