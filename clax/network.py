@@ -33,7 +33,6 @@ class Network(nn.Module):
     @nn.compact
     def __call__(self, x, train: bool):
         x = nn.Dense(self.n_initial)(x)
-        # nn.BatchNorm(use_running_average=not train)(x)
         x = nn.BatchNorm(use_running_average=not train)(x)
         x = nn.silu(x)
         for i in range(self.n_layers):

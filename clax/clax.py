@@ -116,11 +116,9 @@ class Classifier(object):
         if not optimizer:
             optimizer = optax.chain(
                 # optax.clip_by_global_norm(1.0),
-                # optax.adaptive_grad_clip(0.1),
-                optax.adaptive_grad_clip(1.0),
-                # optax.adam(lr),
-                # optax.adamw(self.schedule),
-                optax.adamw(lr),
+                optax.adaptive_grad_clip(0.01),
+                optax.adamw(self.schedule),
+                # optax.adamw(lr),
             )
 
         # self.state = train_state.TrainState.create(
