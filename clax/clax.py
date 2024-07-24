@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import jax.random as random
 import optax
 from jax import jit
+from jaxopt import LBFGS
 from tqdm import tqdm
 
 from clax.network import DataLoader, Network, TrainState
@@ -180,6 +181,28 @@ class Classifier(object):
             train=False,
         )
 
+    def fine_tune(self, samples, labels, **kwargs):
+        """Fine tune the classifier with a 2nd order solver"""
+        labels = jnp.array(labels, dtype=int)
+        samples = jnp.array(samples, dtype=jnp.float32)
+        if not self.state:
+            raise ValueError("Classifier not trained yet.")
+
+        def fn(x):
+            return self.loss(x, self.state.batch_stats, samples, labels, self.rng)[0]
+
+        tuner = LBFGS(fn)
+        res = tuner.run(self.state.params)
+        self.state = self.state.replace(params=res[0])
+        self._predict_weight = lambda x: self.state.apply_fn(
+            {
+                "params": self.state.params,
+                "batch_stats": self.state.batch_stats,
+            },
+            x,
+            train=False,
+        )
+
     def predict(self, samples):
         """Predict the class (log) - probabilities for the provided samples.
 
@@ -248,6 +271,30 @@ class ClassifierSamples(Classifier):
             kwargs["target_batches_per_epoch"] = batches_per_epoch
             self._init_state(**kwargs)
         self._train(samples_a, samples_b, batches_per_epoch, **kwargs)
+        self._predict_weight = lambda x: self.state.apply_fn(
+            {
+                "params": self.state.params,
+                "batch_stats": self.state.batch_stats,
+            },
+            x,
+            train=False,
+        )
+
+    def fine_tune(self, samples_a, samples_b, **kwargs):
+        """Fine tune the classifier with a 2nd order solver"""
+        samples_a = jnp.array(samples_a, dtype=jnp.float32)
+        samples_b = jnp.array(samples_b, dtype=jnp.float32)
+        if not self.state:
+            raise ValueError("Classifier not trained yet.")
+
+        def fn(x):
+            return self.loss(x, self.state.batch_stats, samples_a, samples_b, self.rng)[
+                0
+            ]
+
+        tuner = LBFGS(fn)
+        res = tuner.run(self.state.params)
+        self.state = self.state.replace(params=res[0])
         self._predict_weight = lambda x: self.state.apply_fn(
             {
                 "params": self.state.params,
