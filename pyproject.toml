@@ -16,6 +16,7 @@ dependencies = [
     "flax >= 0.8.2",
     "tqdm >= 4.62.0",
     "optax >= 0.2.2",
+    "jaxopt",
 ]
 
 [options.extras_require]
