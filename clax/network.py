@@ -12,7 +12,7 @@ class DataLoader(object):
         self.rng = np.random.default_rng(rng)
 
     def sample(self, batch_size=128, *args):
-        idx = self.rng.choice(self.x0, size=(batch_size), replace=True)
+        idx = self.rng.choice(self.x0, size=(batch_size), replace=False)
         # idx_p = self.rng.choice(self.x1.shape[0], size=(batch_size), replace=True)
         return idx, idx
 

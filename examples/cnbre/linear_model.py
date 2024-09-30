@@ -15,36 +15,50 @@ from sklearn.model_selection import train_test_split
 
 from clax import Classifier, ClassifierSamples
 
+plt.style.use("computermodern")
 # from clax.network import Network
-
-np.random.seed(2024)
 dim = 50
-n_sample = 10000
+np.random.seed(2024)
 theta = 10
 error = 1.0
 model_0 = np.random.rand(dim, theta)
 model_diff = np.random.rand(dim)
 model_1 = np.concatenate((model_0, model_diff[..., None]), axis=-1)
-
-M_0 = LinearModel(M=model_0, C=np.eye(dim) * error)
-M_1 = LinearModel(M=model_1, C=np.eye(dim) * error)
-
-t_0, d_0 = np.split(M_0.joint().rvs(n_sample // 2), [theta], axis=-1)
-t_diff = M_1.prior().rvs(n_sample // 2)[..., -1]
-t_1 = np.concatenate((t_0, t_diff[..., None]), axis=-1)
-d_1 = M_1.likelihood(t_1).rvs()
-
-# d_0 = M_0.evidence().rvs(n_sample // 2)
-# d_1 = M_1.evidence().rvs(n_sample // 2)
-
-# X = np.concatenate((d_0, d_1))
-# y = np.concatenate((np.zeros(n_sample // 2), np.ones(n_sample // 2)))
-
-X = np.moveaxis(np.stack([d_0, d_1]), 0, 2)
-y = np.zeros(n_sample // 2)
+mu_0 = np.zeros(theta)
+mu_1 = np.zeros(theta + 1)
+mu_1[-1] = 0.0
+M_0 = LinearModel(M=model_0, C=np.eye(dim) * error, mu=mu_0)
+M_1 = LinearModel(M=model_1, C=np.eye(dim) * error, mu=mu_1)
 
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.01)
+# def data_gen(n_samples, seed=2024, contrastive=True):
+
+#     np.random.seed(seed)
+#     n_sample = n_samples
+#     theta = 10
+#     error = 1.0
+#     model_0 = np.random.rand(dim, theta)
+#     model_diff = np.random.rand(dim)
+#     model_1 = np.concatenate((model_0, model_diff[..., None]), axis=-1)
+#     mu_0 = np.zeros(theta)
+#     mu_1 = np.zeros(theta + 1)
+#     mu_1[-1] = 1.0
+#     M_0 = LinearModel(M=model_0, C=np.eye(dim) * error, mu=mu_0)
+#     M_1 = LinearModel(M=model_1, C=np.eye(dim) * error, mu=mu_1)
+
+#     t_0, d_0 = np.split(M_0.joint().rvs(n_sample // 2), [theta], axis=-1)
+#     t_diff = M_1.prior().rvs(n_sample // 2)[..., -1]
+#     t_1 = np.concatenate((t_0, t_diff[..., None]), axis=-1)
+#     d_1 = M_1.likelihood(t_1).rvs()
+#     X = np.moveaxis(np.stack([d_0, d_1]), 0, 2)
+#     y = np.zeros(n_sample // 2)
+
+#     x_test = np.concatenate([M_0.evidence().rvs(1000), M_1.evidence().rvs(1000)])
+
+#     # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.01)
+#     return X, y, x_test, M_0, M_1
+
+import jax.numpy as jnp
 
 
 class SDClassifier(Classifier):
@@ -65,22 +79,20 @@ class SDClassifier(Classifier):
         return loss, updates
 
 
-classifier = SDClassifier()
-# classifier = Classifier()
-
-
 # optionally specify the optimizer manually
-# chain = optax.chain(
-#     optax.adaptive_grad_clip(1.0),
-#     optax.adamw(1e-3),
-# )
+import optax
+
+chain = optax.chain(
+    optax.adaptive_grad_clip(0.01),
+    optax.adamw(5e-3),
+)
 
 
 class Network(nn.Module):
     """A simple MLP classifier."""
 
-    n_initial: int = 256
-    n_hidden: int = 64
+    n_initial: int = 1028
+    n_hidden: int = 128
     n_layers: int = 3
     n_out: int = 1
     # act = nn.silu
@@ -89,39 +101,116 @@ class Network(nn.Module):
     def __call__(self, x, train: bool):
         x = nn.Dense(self.n_initial)(x)
         # hacky way to make batchnorm have no impact
-        nn.BatchNorm(use_running_average=not train)(x)
+        x = nn.BatchNorm(use_running_average=not train)(x)
         x = nn.silu(x)
         for i in range(self.n_layers):
             x = nn.Dense(self.n_hidden)(x)
+            x = nn.BatchNorm(use_running_average=not train)(x)
             x = nn.silu(x)
         x = nn.Dense(self.n_out)(x)
         return x
 
 
-lr = 1e-3
-classifier.network = Network(n_out=1, n_initial=256, n_hidden=64, n_layers=3)
-import jax
-import jax.numpy as jnp
+dims = [int(1e3), int(1e4), int(1e5), int(1e6)]
+true_ks = []
+network_ks = []
+network_ks_contrastive = []
+lr = 1e-4
+# X, y, X_test, M_0, M_1 = data_gen(dims[0], contrastive=True)
+X_test = np.concatenate([M_0.evidence().rvs(5000), M_1.evidence().rvs(5000)])
+# X_test = M_1.evidence().rvs(5000)
+
+for i in dims:
+    t_0, d_0 = np.split(M_0.joint().rvs(i // 2), [theta], axis=-1)
+    t_diff = M_1.prior().rvs(i // 2)[..., -1]
+    t_1 = np.concatenate((t_0, t_diff[..., None]), axis=-1)
+    d_1 = M_1.likelihood(t_1).rvs()
+    X = np.moveaxis(np.stack([d_0, d_1]), 0, 2)
+    y = np.zeros(i // 2)
+
+    classifier_contrastive = SDClassifier()
+    classifier_contrastive.network = Network()
+    classifier_contrastive.fit(
+        X, y, epochs=1000, lr=lr, ndims=dim, batch_size=i // 20, optimizer=chain
+    )
+
+    d_0 = M_0.evidence().rvs(X.shape[0])
+    d_1 = M_1.evidence().rvs(X.shape[0])
+    X = np.concatenate((d_0, d_1))
+    y = np.concatenate((np.zeros(d_0.shape[0]), np.ones(d_1.shape[0])))
+
+    classifier = ClassifierSamples()
+    classifier.network = Network()
+    classifier.fit(
+        d_1, d_0, epochs=1000, lr=lr, ndims=dim, batch_size=i // 10, optimizer=chain
+    )
+    true_k = M_1.evidence().logpdf(X_test) - M_0.evidence().logpdf(X_test)
+    true_ks.append(true_k)
+
+    network_k = classifier.predict(X_test).squeeze()
+    network_k_contrastive = classifier_contrastive.predict(X_test).squeeze()
+    print(f"RMSE: {np.sqrt(np.mean((true_k - network_k) ** 2))}")
+    network_ks.append(network_k)
+    network_ks_contrastive.append(network_k_contrastive)
+    print(
+        f"RMSE contrastive: {np.sqrt(np.mean((true_k - network_k_contrastive) ** 2))}"
+    )
+    f, a = plt.subplots()
+    a.scatter(true_k, network_k, label="Vanilla", s=4)
+    a.scatter(true_k, network_k_contrastive, label="CNBRE", s=4)
+    a.plot((-1, 15), (-1, 15), color="black", linestyle="--")
+    a.set_xlabel(r"True $\ln K$")
+    a.set_ylabel(r"Network $\ln K$")
+    a.legend()
+    f.savefig(f"en_{i}.pdf")
+    f, a = plt.subplots()
+    a.plot(classifier.trace.losses, label="Vanilla")
+    a.plot(classifier_contrastive.trace.losses, label="CNBRE")
+    a.legend()
+    a.set_yscale("log")
+    a.set_xlabel("Epoch")
+    a.set_ylabel("Loss")
+    f.savefig(f"loss_{i}.pdf")
 
 
-def ExpLoss(logits, labels):
-    return jnp.exp((labels.astype(jnp.float32) * -2 + 1.0) * logits).mean()
+f, a = plt.subplots()
 
+a.plot(
+    dims,
+    [
+        np.sqrt(np.mean((true_k - network_k) ** 2))
+        for true_k, network_k in zip(true_ks, network_ks)
+    ],
+    label="Vanilla",
+    marker="o",
+    markersize=4,
+)
+a.plot(
+    dims,
+    [
+        np.sqrt(np.mean((true_k - network_k) ** 2))
+        for true_k, network_k in zip(true_ks, network_ks_contrastive)
+    ],
+    label="CNBRE",
+    marker="o",
+    markersize=4,
+)
+a.set_xlabel("Number of samples")
+a.set_ylabel("RMSE")
+a.legend()
+a.set_xscale("log")
+a.set_yscale("log")
+f.savefig("en.pdf")
 
-# classifier.loss_fn = ExpLoss
+# classifier.fit(X_train, y_train, epochs=200, lr=lr, ndims=dim, batch_size=1000)
 
-# with jax.disable_jit():
-#     classifier.fit(X_train, y_train, epochs=100, lr=lr, ndims=dim, batch_size=512)
+# # X_test = jnp.concatenate([X_test[..., 0], X_test[..., 1]])
+# true_k = M_1.evidence().logpdf(X_test) - M_0.evidence().logpdf(X_test)
+# network_k = classifier.predict(X_test).squeeze()
 
-classifier.fit(X_train, y_train, epochs=100, lr=lr, ndims=dim, batch_size=512)
-
-X_test = jnp.concatenate([X_test[..., 0], X_test[..., 1]])
-true_k = M_1.evidence().logpdf(X_test) - M_0.evidence().logpdf(X_test)
-network_k = classifier.predict(X_test).squeeze()
-
-plt.scatter(true_k, network_k)
-print(f"RMSE: {np.sqrt(np.mean((true_k - network_k) ** 2))}")
-plt.plot((-10, 10), (-10, 10), color="black", linestyle="--")
-plt.xlabel(r"True $\ln K$")
-plt.ylabel(r"Network $\ln K$")
-plt.savefig("en.pdf")
+# plt.scatter(true_k, network_k)
+# print(f"RMSE: {np.sqrt(np.mean((true_k - network_k) ** 2))}")
+# plt.plot((-10, 10), (-10, 10), color="black", linestyle="--")
+# plt.xlabel(r"True $\ln K$")
+# plt.ylabel(r"Network $\ln K$")
+# plt.savefig("en.pdf")
