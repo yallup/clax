@@ -163,7 +163,8 @@ class Classifier(object):
         batch_size = min(batch_size, data_size)
         kwargs["batch_size"] = batch_size
         batches_per_epoch = data_size // batch_size
-        self.ndims = samples.shape[-1]
+        # self.ndims = samples.shape[-1]
+        self.ndims = kwargs.get("ndims", samples.shape[-1])
         kwargs["epochs"] = epochs
         if (not self.state) | restart:
             kwargs["target_batches_per_epoch"] = batches_per_epoch
